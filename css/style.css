@@ -200,6 +200,24 @@ h1, h2, h3, .btn, .act, .jua { font-family: "Jua", -apple-system, "Apple SD Goth
 .pitch-tag { display: flex; align-items: center; justify-content: center; gap: .35rem; font: .95rem Jua, sans-serif; background: rgba(0, 0, 0, .35); border-radius: .8rem; padding: .45rem; white-space: nowrap; overflow: hidden; }
 .pitch-tag b { font-weight: normal; color: var(--gold); }
 
+/* 잠금 화면 */
+.lock { display: flex; align-items: center; justify-content: center; }
+.lock-box { display: flex; flex-direction: column; align-items: center; gap: 1.4rem; }
+.lock-title { font: 2rem Jua, sans-serif; }
+.pin-dots { display: flex; gap: 1.1rem; }
+.pin-dots i { width: 1.3rem; height: 1.3rem; border-radius: 50%; border: .18rem solid #fff; }
+.pin-dots i.on { background: var(--gold); border-color: var(--gold); }
+.pin-dots.wrong { animation: shake .4s; }
+.pin-dots.wrong i { border-color: #ff6b6b; background: #ff6b6b; }
+@keyframes shake { 20%, 60% { transform: translateX(-.8rem); } 40%, 80% { transform: translateX(.8rem); } }
+.keypad { display: grid; grid-template-columns: repeat(3, 5.2rem); gap: .9rem; }
+.key {
+  appearance: none; border: 0; width: 5.2rem; height: 5.2rem; border-radius: 50%; cursor: pointer;
+  background: rgba(255, 255, 255, .14); color: #fff; font: 2.2rem Jua, sans-serif; transition: background .1s, transform .08s;
+}
+.key:active { background: rgba(255, 255, 255, .35); transform: scale(.94); }
+.key.del { font-size: 1.7rem; background: transparent; }
+
 /* 감독 */
 .mgr b { font-family: Jua, sans-serif; font-weight: normal; }
 .lp-mgr { font-size: .85rem; padding: .3rem .55rem; border-top: 1px solid var(--line); color: var(--muted); }

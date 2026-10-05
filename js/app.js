@@ -82,7 +82,63 @@ const stars = (kind, i, f, v) =>
     `<b class="${n <= v ? 'on' : ''}" data-act="star" data-kind="${kind}" data-i="${i}" data-f="${f}" data-v="${n}">★</b>`).join('')}</span>`;
 
 /* ================= 화면들 ================= */
+/* ================= 잠금 (비밀번호 키패드) ================= */
+// 간단한 사용 제한용이에요. config.js의 pin 으로 바꾸고, ''로 비우면 잠금이 꺼져요.
+const Lock = {
+  entered: '',
+  pin() {
+    const c = window.GAME_CONFIG;
+    return c && c.pin != null ? String(c.pin) : '1015';
+  },
+  isUnlocked() {
+    if (!this.pin()) return true;
+    try { return sessionStorage.getItem('kbb.unlocked') === this.pin(); } catch (e) { return false; }
+  },
+  press(d) {
+    const pin = this.pin();
+    if (this.entered.length >= pin.length) return;
+    this.entered += d;
+    this.renderDots();
+    if (this.entered.length < pin.length) return;
+    if (this.entered === pin) {
+      try { sessionStorage.setItem('kbb.unlocked', pin); } catch (e) {}
+      Sound.ding();
+      setTimeout(() => { this.entered = ''; App.go('home'); }, 250);
+    } else {
+      Sound.out();
+      const box = $('.pin-dots'); if (box) box.classList.add('wrong');
+      if (navigator.vibrate) navigator.vibrate(150);
+      setTimeout(() => { this.entered = ''; this.renderDots(); }, 600);
+    }
+  },
+  back() { this.entered = this.entered.slice(0, -1); this.renderDots(); },
+  renderDots() {
+    const box = $('.pin-dots'); if (!box) return;
+    box.classList.remove('wrong');
+    box.innerHTML = Array.from({ length: this.pin().length }, (_, i) => `<i class="${i < this.entered.length ? 'on' : ''}"></i>`).join('');
+  },
+};
+document.addEventListener('keydown', e => {
+  if (App.screen !== 'lock') return;
+  if (/^\d$/.test(e.key)) Lock.press(e.key);
+  else if (e.key === 'Backspace') Lock.back();
+});
+
 const Screens = {
+  /* ---------- 잠금 화면 ---------- */
+  lock() {
+    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
+    return `<div class="screen lock">
+      <div class="lock-box">
+        <div class="lock-title">🔒 비밀번호를 눌러요</div>
+        <div class="pin-dots">${Array.from({ length: Lock.pin().length }, () => '<i></i>').join('')}</div>
+        <div class="keypad">${keys.map(k => k === '' ? '<span></span>'
+          : k === 'del' ? '<button class="key del" data-act="pinDel">⌫</button>'
+          : `<button class="key" data-act="pinKey" data-v="${k}">${k}</button>`).join('')}</div>
+      </div>
+    </div>`;
+  },
+
   /* ---------- 첫 화면 ---------- */
   home() {
     const my = DB.team(DB.settings.myTeam) || DB.teams[0];
@@ -905,6 +961,8 @@ const Actions = {
     Game.start(G, true);
   },
 
+  pinKey(el) { Lock.press(el.dataset.v); },
+  pinDel() { Lock.back(); },
   luToggle() {
     const G = Game.G; if (!G) return;
     const shown = Game.luSide || Engine.bat(G);
@@ -1130,4 +1188,5 @@ document.addEventListener('pointerdown', () => {
 document.addEventListener('gesturestart', e => e.preventDefault());
 
 DB.init();
+if (!Lock.isUnlocked()) App.screen = 'lock';
 render();
