@@ -43,6 +43,8 @@ function normTeam(raw) {
     id, name: String(raw.name || id), short: String(raw.short || raw.name || id), call: String(raw.call || raw.name || id),
     color: raw.color || '#333333', color2: raw.color2 || '#FFFFFF', logo: raw.logo || '', rotation: raw.rotation | 0,
   };
+  const m = typeof raw.manager === 'string' ? { name: raw.manager } : (raw.manager || {});
+  t.manager = { name: String(m.name || ''), num: m.num == null || m.num === '' ? '' : numOr(m.num, '') };
   const bs = Array.isArray(raw.batters) ? raw.batters : [];
   t.batters = Array.from({ length: 9 }, (_, i) => {
     let b = bs[i]; if (typeof b === 'string') b = { name: b }; b = b || {};
@@ -70,8 +72,10 @@ const DB = {
     const hash = strHash(JSON.stringify(cfg || null));
 
     this.settings = Object.assign(
-      { voice: true, sfx: true, rate: 1, innings: 3, mode: 'pitch', simOthers: true, myTeam: (cfg && cfg.myTeam) || 'kt', favBoost: 0 },
+      { voice: true, sfx: true, bgm: true, rate: 1, innings: 3, mode: 'pitch', simOthers: true, myTeam: (cfg && cfg.myTeam) || 'kt', favBoost: 2, ver: 2 },
       Store.get('settings', {}));
+    // 예전 설정을 쓰던 기기: '우리 팀 힘내기' 기본값을 '많이'로, 배경음 켜기
+    if ((this.settings.ver | 0) < 2) { this.settings.favBoost = 2; this.settings.bgm = true; this.settings.ver = 2; }
 
     let teams = Store.get('teams', null);
     if (!Array.isArray(teams) || teams.length < 2) {

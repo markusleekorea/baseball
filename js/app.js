@@ -63,6 +63,7 @@ function render() {
   const el = $('#app');
   el.innerHTML = Screens[App.screen](App.params);
   document.body.classList.toggle('ingame', App.screen === 'game');
+  Sound.bgm(App.screen);
   if (Mount[App.screen]) Mount[App.screen](App.params);
 }
 
@@ -115,7 +116,7 @@ const Screens = {
         <div class="team-grid">${DB.teams.map(x =>
           `<button class="tg ${x.id === S[side] ? 'sel' : ''}" data-act="pickTeam" data-side="${side}" data-id="${x.id}">${Art.logo(x, 'sm')}</button>`).join('')}</div>
         <div class="seg wide">
-          <button class="${S.ctrl[side] === 'human' ? 'on' : ''}" data-act="ctrl" data-side="${side}" data-v="human">🙋 사람</button>
+          <button class="${S.ctrl[side] === 'human' ? 'on' : ''}" data-act="ctrl" data-side="${side}" data-v="human">🙋 사람이 쳐요</button>
           <button class="${S.ctrl[side] === 'cpu' ? 'on' : ''}" data-act="ctrl" data-side="${side}" data-v="cpu">🤖 컴퓨터</button>
         </div>
         <button class="btn sp-btn" data-act="cyclePitcher" data-side="${side}">⚾ 선발투수 <b>${esc(p.name)}</b> #${p.num} 🔄</button>
@@ -328,6 +329,7 @@ const Screens = {
           <div class="set-row"><span>말하기 빠르기</span>
             <div class="row"><input type="range" min="0.7" max="1.4" step="0.05" value="${s.rate}" data-set="rate"><button class="btn small" data-act="testVoice">🔊 들어보기</button></div></div>
           ${tog('sfx', '🎵 효과음')}
+          ${tog('bgm', '🎶 배경음 (메뉴 음악 · 경기장 관중 소리)')}
           <p class="small-note">아이패드 옆 무음 스위치(또는 무음 모드)가 켜져 있으면 효과음이 안 들릴 수 있어요.</p>
         </section>
         <section class="panel">
@@ -522,13 +524,12 @@ const Game = {
     const bs = Engine.bat(G), fs = Engine.fld(G), Tb = G.teams[bs], Tf = G.teams[fs];
     const ready = this.phase === 'ready', spinning = this.phase === 'spin';
     const tag = T => `<span class="btn-team" style="background:${T.color};color:${T.color2};border-color:${T.color2}">${esc(T.short)}</span>`;
-    let h = '';
-    if (G[fs].ctrl === 'human') h += `<button class="act throw ${ready ? 'go' : ''}" data-act="throw" ${ready ? '' : 'disabled'}>${tag(Tf)}⚾ 던지기!</button>`;
-    else h += `<div class="cpu-tag">${tag(Tf)} 🤖 컴퓨터 투수</div>`;
+    let h = `<div class="pitch-tag">${tag(Tf)} 투수 <b>${esc(Tf.pitcher.name)}</b> ${spinning ? '던졌다!' : ready ? '던질 준비…' : ''}</div>`;
     if (G[bs].ctrl === 'human') {
+      const left = Engine.unlimitedCheer(G) ? '무제한 ♾️' : ('🔥'.repeat(G[bs].cheers) || '다 썼어요');
       h += `<button class="act stop ${spinning ? 'go' : ''}" data-act="stop" ${spinning ? '' : 'disabled'}>${tag(Tb)}🏏 멈춰!</button>`;
-      h += `<button class="act cheer ${G.boost ? 'active' : ''}" data-act="cheer" ${ready && Engine.canCheer(G) ? '' : 'disabled'}>
-        ${G.boost ? '🔥 응원 중!' : `📣 응원하기 <small>${'🔥'.repeat(G[bs].cheers) || '다 썼어요'}</small>`}</button>`;
+      h += `<button class="act cheer ${G.boost ? 'active' : ''}" data-act="cheer" ${(ready || spinning) && Engine.canCheer(G) ? '' : 'disabled'}>
+        ${G.boost ? '🔥 응원 중!' : `📣 응원하기 <small>${left}</small>`}</button>`;
     } else h += `<div class="cpu-tag">${tag(Tb)} 🤖 컴퓨터 타자</div>`;
     el.innerHTML = h;
   },
@@ -631,6 +632,7 @@ const Game = {
     const G = this.G, T = G.teams[Engine.bat(G)];
     const txt = `${G.inning}회 ${G.half ? '말' : '초'}`;
     this.showOverlay(`<div class="banner"><div class="b-logo">${Art.logo(DB.team(T.id) || T, 'xl')}</div><div class="b-big">${txt}</div><div class="b-sub">${esc(T.name)} 공격</div></div>`, 'banner-ov');
+    Sound.inning(); Sound.claps();
     this.setCaption(`${txt}, ${T.name} 공격`);
     let say = `${txt}, ${T.call} 공격입니다.`;
     if (G.inning > G.innings) say = `연장 ${say}`;
@@ -654,16 +656,10 @@ const Game = {
     this.phase = 'ready'; this.seq++;
     this.save();
     this.setIdleWheel(); this.updateButtons();
-    const bs = Engine.bat(G), fs = Engine.fld(G);
-    if (G[bs].ctrl === 'cpu' && Engine.cpuCheer(G)) {
-      this.phase = 'busy'; this.updateButtons();
-      await sleep(400);
-      if (!this.alive(t)) return;
-      await this.doCheer(t);
-      if (!this.alive(t)) return;
-      this.phase = 'ready'; this.seq++; this.updateButtons();
-    }
-    if (G[fs].ctrl === 'cpu') this.later(() => this.throw(), 500 + Math.random() * 400);
+    // 투수는 항상 자동으로 던져요. 사람은 타자만 해요.
+    let wait = G[Engine.bat(G)].ctrl === 'cpu' ? 500 + Math.random() * 400 : 750;
+    if (G[Engine.bat(G)].ctrl === 'cpu' && Engine.cpuCheer(G)) { this.doCheer(); wait += 900; }
+    this.later(() => this.throw(), wait);
   },
 
   throw() {
@@ -693,25 +689,27 @@ const Game = {
     await this.narrate(r, t);
   },
 
-  async cheer() {
+  // 응원: 룰렛이 도는 중에도 누를 수 있고, 경기를 멈추지 않아요
+  cheer() {
     const G = this.G;
-    if (this.phase !== 'ready' || G[Engine.bat(G)].ctrl !== 'human' || !Engine.canCheer(G)) return;
-    const t = this.tok;
-    this.phase = 'busy'; this.seq++; this.updateButtons();
-    await this.doCheer(t);
-    if (!this.alive(t)) return;
-    this.ready(t);
+    if ((this.phase !== 'ready' && this.phase !== 'spin') || G[Engine.bat(G)].ctrl !== 'human' || !Engine.canCheer(G)) return;
+    this.doCheer();
   },
 
-  async doCheer(t) {
+  doCheer() {
     const G = this.G, side = Engine.bat(G), T = G.teams[side], b = Engine.batter(G);
-    Engine.useCheer(G);
-    Sound.charge(); Sound.cheer(2.6, 0.25);
+    if (!Engine.useCheer(G)) return;
+    Sound.charge(); Sound.cheer(2.6, 0.22);
     this.popup('📣 응원!', 'cheer');
     Fx.confetti([T.color, T.color2, '#ffd84d'], 50);
-    this.setIdleWheel(); this.renderMatchup(); this.renderBatter(); this.updateButtons();
-    this.setCaption(`${T.name} 응원 시작! 힘내라 ${b.name}!`);
-    await Voice.speak(`${T.call} 응원 시작! 힘내라, ${b.name}!`);
+    if (this.phase === 'spin') {          // 돌고 있는 룰렛의 칸이 바로 커져요
+      this.segs = G.mode === 'pitch' ? Engine.pitchSegs(G) : Engine.atbatSegs(G);
+      this.wheel.setSegments(this.segs);
+      this.renderWheelTitle();
+    } else this.setIdleWheel();
+    this.renderMatchup(); this.renderBatter(); this.updateButtons();
+    this.setCaption(`${T.name} 응원! 힘내라 ${b.name}!`);
+    Voice.speak(`힘내라, ${b.name}!`);
   },
 
   async narrate(r, t) {
@@ -774,7 +772,7 @@ const Game = {
     }
 
     if (r.runs.length) {
-      Sound.cheer(2.4, 0.28);
+      Sound.cheer(2.4, 0.28); Sound.ding();
       say.push(`${T.call} ${r.runs.length}점! ${G.away.runs} 대 ${G.home.runs}.`);
     }
     if (['so', 'ground', 'fly', 'line', 'dp', 'sf'].includes(r.type) && !r.endHalf && !r.over) {
@@ -862,6 +860,7 @@ const Game = {
       <div class="row">
         <button class="btn mid" data-act="gToggle" data-k="voice">${DB.settings.voice ? '🎙️ 중계 끄기' : '🎙️ 중계 켜기'}</button>
         <button class="btn mid" data-act="gToggle" data-k="sfx">${DB.settings.sfx ? '🎵 효과음 끄기' : '🎵 효과음 켜기'}</button>
+        <button class="btn mid" data-act="gToggle" data-k="bgm">${DB.settings.bgm ? '🎶 배경음 끄기' : '🎶 배경음 켜기'}</button>
       </div>
       <button class="btn mid" data-act="gLater">💾 나중에 이어하기 (처음 화면으로)</button>
       <button class="btn mid danger" data-act="gQuit">🗑️ 경기 그만하기 (기록 안 남아요)</button>
@@ -906,7 +905,6 @@ const Actions = {
     Game.renderLineup();
   },
   favBoost(el) { DB.settings.favBoost = +el.dataset.v; DB.saveSettings(); render(); },
-  throw() { Game.throw(); },
   stop() { Game.stop(); },
   cheer() { Game.cheer(); },
   gmenu() { Game.menu(); },
@@ -914,6 +912,7 @@ const Actions = {
   gToggle(el) {
     const k = el.dataset.k; DB.settings[k] = !DB.settings[k]; DB.saveSettings();
     if (k === 'voice' && !DB.settings.voice) Voice.cancel();
+    if (k === 'bgm') Sound.bgm('game');
     Game.menu();
   },
   gLater() { Game.save(); Game.paused = false; App.go('home'); },
@@ -1099,6 +1098,7 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
   const fn = Actions[el.dataset.act];
+  if (!['stop', 'cheer', 'star', 'luTap'].includes(el.dataset.act)) Sound.tap();
   if (fn) fn(el, e);
 });
 document.addEventListener('change', e => {
@@ -1111,6 +1111,7 @@ let unlocked = false;
 document.addEventListener('pointerdown', () => {
   if (unlocked) return; unlocked = true;
   Sound.unlock(); Voice.unlock();
+  Sound.bgm(App.screen);
 }, { capture: true });
 document.addEventListener('gesturestart', e => e.preventDefault());
 

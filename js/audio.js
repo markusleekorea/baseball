@@ -48,12 +48,107 @@ const Sound = (() => {
     for (const [f, len] of notes) { if (f) tone(f, len * gap * 1.6, { type, vol, at }); at += len * gap; }
   }
 
+  /* ----- 배경음: 경기장 관중 소리 (경기 중) ----- */
+  let amb = null, unlocked = false;
+  const bgmOn = () => unlocked && DB.settings.bgm && ac();
+
+  // 짝짝 짝짝짝 박수
+  function claps(vol = 0.05) {
+    [0, 0.28, 0.84, 1.12, 1.4].forEach(p => {
+      for (let k = 0; k < 4; k++) noise(0.05, { vol, freq: 1400 + Math.random() * 900, q: 1.2, at: p + k * 0.013 });
+    });
+  }
+
+  function startAmbience() {
+    if (amb || !bgmOn()) return;
+    const c = ctx, t = c.currentTime;
+    const src = c.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 650; bp.Q.value = 0.6;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1600;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.045, t + 1.5);
+    const lfo = c.createOscillator(); lfo.frequency.value = 0.12;
+    const lg = c.createGain(); lg.gain.value = 0.015;
+    lfo.connect(lg); lg.connect(g.gain);
+    src.connect(bp); bp.connect(lp); lp.connect(g); g.connect(master);
+    src.start(); lfo.start();
+    const timer = setInterval(() => { if (Math.random() < 0.45) claps(0.035); }, 7000);
+    amb = { src, g, lfo, timer };
+  }
+
+  function stopAmbience() {
+    if (!amb) return;
+    const { src, g, lfo, timer } = amb, t = ctx.currentTime;
+    clearInterval(timer);
+    g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 0.5);
+    src.stop(t + 0.6); lfo.stop(t + 0.6);
+    amb = null;
+  }
+
+  /* ----- 배경음악: 메뉴 화면용 짧은 반복 곡 (작게) ----- */
+  let mus = null;
+  const MEL = [[76, 1], [79, 1], [84, 2], [83, 1], [79, 1], [81, 2], [77, 1], [81, 1], [79, 1], [76, 1], [74, 2], [67, 2],
+    [76, 1], [79, 1], [84, 1], [88, 1], [86, 1], [84, 1], [81, 2], [77, 1], [76, 1], [74, 1], [79, 1], [72, 2], [0, 2]];
+  const BASS = [48, 45, 41, 43, 48, 45, 43, 48];
+
+  function startMusic() {
+    if (mus || !bgmOn()) return;
+    const c = ctx, beat = 60 / 108;
+    const g = c.createGain(); g.gain.setValueAtTime(0, c.currentTime); g.gain.linearRampToValueAtTime(1, c.currentTime + 1.5); g.connect(master);
+    const note = (midi, at, dur, type, vol) => {
+      const o = c.createOscillator(), e = c.createGain();
+      o.type = type; o.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+      e.gain.setValueAtTime(0.0001, at); e.gain.exponentialRampToValueAtTime(vol, at + 0.02); e.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(e); e.connect(g); o.start(at); o.stop(at + dur + 0.05);
+    };
+    const s = { mt: c.currentTime + 0.2, mi: 0, bt: c.currentTime + 0.2, bi: 0 };
+    const timer = setInterval(() => {
+      const now = c.currentTime, until = now + 0.6;
+      if (s.mt < now - 0.2) s.mt = now + 0.1;      // 화면을 잠깐 떠났다 와도 음이 몰리지 않게
+      if (s.bt < now - 0.2) s.bt = now + 0.1;
+      while (s.mt < until) {
+        const [m, b] = MEL[s.mi % MEL.length];
+        if (m) note(m, s.mt, b * beat * 0.85, 'triangle', 0.035);
+        s.mt += b * beat; s.mi++;
+      }
+      while (s.bt < until) {
+        const r = BASS[Math.floor(s.bi / 2) % BASS.length];
+        note(r + (s.bi % 2 ? 12 : 0), s.bt, beat * 1.7, 'sine', 0.05);
+        s.bt += 2 * beat; s.bi++;
+      }
+    }, 150);
+    mus = { g, timer };
+  }
+
+  function stopMusic() {
+    if (!mus) return;
+    const { g, timer } = mus, t = ctx.currentTime;
+    clearInterval(timer);
+    g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 0.4);
+    setTimeout(() => g.disconnect(), 700);
+    mus = null;
+  }
+
   return {
-    unlock() { ac(); },
+    unlock() { ac(); unlocked = true; },
+    // 화면에 맞는 배경음: 경기 중 = 관중 소리, 그 밖 = 음악
+    bgm(screen) {
+      if (!DB.settings.bgm || !unlocked) { stopMusic(); stopAmbience(); return; }
+      if (screen === 'game') { stopMusic(); startAmbience(); }
+      else { stopAmbience(); startMusic(); }
+    },
+    claps() { if (on()) claps(0.07); },
+    tap() { if (on()) tone(660, 0.05, { type: 'sine', vol: 0.05 }); },
+    ding() { if (on()) { tone(1047, 0.18, { type: 'triangle', vol: 0.1 }); tone(1319, 0.3, { type: 'triangle', vol: 0.1, at: 0.12 }); } },
+    inning() { if (on()) melody([[523, 1], [659, 1], [784, 2], [659, 1], [784, 3]], { type: 'triangle', vol: 0.07, gap: 0.12 }); },
     tick() { if (on()) tone(1800, 0.025, { type: 'square', vol: 0.035 }); },
     whoosh() { if (on()) noise(0.35, { vol: 0.12, freq: 900, q: 1.5, attack: 0.15 }); },
     mitt() { if (on()) { noise(0.09, { vol: 0.55, freq: 450, q: 0.8 }); tone(110, 0.09, { vol: 0.25 }); } },
-    crack() { if (on()) { noise(0.06, { vol: 0.9, freq: 2600, q: 0.6, type: 'highpass' }); tone(1300, 0.07, { type: 'triangle', vol: 0.3, slide: 500 }); } },
+    crack() {   // 딱! (나무 배트)
+      if (!on()) return;
+      noise(0.05, { vol: 0.8, freq: 2600, q: 0.6, type: 'highpass' });
+      tone(1500, 0.06, { type: 'triangle', vol: 0.28, slide: 600 });
+      tone(420, 0.09, { type: 'sine', vol: 0.2, slide: 260 });
+    },
     foul() { if (on()) { noise(0.05, { vol: 0.5, freq: 2200, q: 0.6, type: 'highpass' }); } },
     out() { if (on()) tone(240, 0.3, { type: 'sawtooth', vol: 0.06, slide: 120 }); },
     cheer(len = 1.8, vol = 0.22) {

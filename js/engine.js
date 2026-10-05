@@ -32,6 +32,7 @@ const Engine = (() => {
     return {
       id: t.id, name: t.name, short: t.short, call: t.call, color: t.color, color2: t.color2,
       batters: t.batters.map(b => ({ ...b })), pitcher: { ...t.pitchers[pi] }, pIdx: pi,
+      manager: { ...(t.manager || {}) },
     };
   }
 
@@ -276,8 +277,14 @@ const Engine = (() => {
   }
 
   /* ---------- 응원 ---------- */
-  const canCheer = G => G[bat(G)].cheers > 0 && !G.boost;
-  function useCheer(G) { if (!canCheer(G)) return false; G[bat(G)].cheers--; G.boost = true; return true; }
+  // 우리 팀(G.fav)은 응원 무제한
+  const unlimitedCheer = G => !!G.fav && G.teams[bat(G)].id === G.fav;
+  const canCheer = G => !G.boost && (unlimitedCheer(G) || G[bat(G)].cheers > 0);
+  function useCheer(G) {
+    if (!canCheer(G)) return false;
+    if (!unlimitedCheer(G)) G[bat(G)].cheers--;
+    G.boost = true; return true;
+  }
   function cpuCheer(G) {
     if (!canCheer(G)) return false;
     const risp = G.bases[1] || G.bases[2];
@@ -307,6 +314,6 @@ const Engine = (() => {
     SEG, bat, fld, batter, nextBatter, pitcher, newGame,
     pitchSegs, hitSegs, contactSegs, atbatSegs, pick, applyContact,
     applyPitch, applyInplay, applyAtBat,
-    canCheer, useCheer, cpuCheer, simulate,
+    canCheer, useCheer, unlimitedCheer, cpuCheer, simulate,
   };
 })();
