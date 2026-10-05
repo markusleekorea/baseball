@@ -199,6 +199,15 @@ h1, h2, h3, .btn, .act, .jua { font-family: "Jua", -apple-system, "Apple SD Goth
 .act.stop { background: linear-gradient(#ff8a3d, #ff4f12); font-size: 2.1rem; padding: 1.15rem .4rem; }
 .pitch-tag { display: flex; align-items: center; justify-content: center; gap: .35rem; font: .95rem Jua, sans-serif; background: rgba(0, 0, 0, .35); border-radius: .8rem; padding: .45rem; white-space: nowrap; overflow: hidden; }
 .pitch-tag b { font-weight: normal; color: var(--gold); }
+
+/* 감독 */
+.mgr b { font-family: Jua, sans-serif; font-weight: normal; }
+.lp-mgr { font-size: .85rem; padding: .3rem .55rem; border-top: 1px solid var(--line); color: var(--muted); }
+.lp-mgr b { color: var(--ink); font-size: 1rem; }
+.sp-mgr { font-size: 1rem; opacity: .9; }
+.sp-mgr b { color: var(--gold); font-size: 1.15rem; }
+.lu-mgr { text-align: center; font-size: 1.1rem; margin: -.2rem 0 .7rem; color: #dbe6ff; }
+.lu-mgr b { color: var(--gold); font-size: 1.4rem; }
 .act.cheer { background: linear-gradient(#ffcf4a, #ff9f00); color: #4a2a00; font-size: 1.1rem; padding: .5rem .4rem; }
 .act.cheer small { font-size: .85rem; }
 .act.cheer.active { opacity: 1; background: linear-gradient(#ff6a00, #ff2d00); color: #fff; }

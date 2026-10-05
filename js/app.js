@@ -73,6 +73,10 @@ const header = (title, back = 'home', extra = '', backParams = '') =>
      <h2>${title}</h2><div class="bar-extra">${extra}</div>
    </header>`;
 
+// 감독 표시 (이름이 없으면 안 보임)
+const mgrHTML = (t, cls) => (t && t.manager && t.manager.name
+  ? `<div class="mgr ${cls}">🧢 감독 <b>${esc(t.manager.name)}</b>${t.manager.num !== '' && t.manager.num != null ? ` #${t.manager.num}` : ''}</div>` : '');
+
 const stars = (kind, i, f, v) =>
   `<span class="stars">${[1, 2, 3, 4, 5].map(n =>
     `<b class="${n <= v ? 'on' : ''}" data-act="star" data-kind="${kind}" data-i="${i}" data-f="${f}" data-v="${n}">★</b>`).join('')}</span>`;
@@ -112,7 +116,7 @@ const Screens = {
       const t = DB.team(S[side]), p = t.pitchers[S.pit[side]];
       return `<div class="setup-panel" style="--tc:${t.color};--tc2:${t.color2}">
         <div class="sp-head">${side === 'away' ? '원정팀 (먼저 공격)' : '홈팀 (나중에 공격)'}</div>
-        <div class="sp-team">${Art.logo(t, 'lg')}<div class="sp-name">${esc(t.name)}</div></div>
+        <div class="sp-team">${Art.logo(t, 'lg')}<div><div class="sp-name">${esc(t.name)}</div>${mgrHTML(t, 'sp-mgr')}</div></div>
         <div class="team-grid">${DB.teams.map(x =>
           `<button class="tg ${x.id === S[side] ? 'sel' : ''}" data-act="pickTeam" data-side="${side}" data-id="${x.id}">${Art.logo(x, 'sm')}</button>`).join('')}</div>
         <div class="seg wide">
@@ -175,6 +179,7 @@ const Screens = {
     return `<div class="screen lineup" style="--tc:${t.color};--tc2:${t.color2}">
       ${header(`${Art.logo(t, 'xs')} ${esc(t.name)} 타순 정하기`, backTo, '', `data-team="${t.id}"`)}
       <p class="hint">${App.luSel == null ? '👆 자리를 바꿀 선수를 눌러요' : `👉 <b>${esc(t.batters[App.luSel].name)}</b> 선수랑 바꿀 선수를 눌러요`}</p>
+      ${mgrHTML(t, 'lu-mgr')}
       <div class="lu-grid">${t.batters.map((b, i) => `
         <button class="lu-card ${App.luSel === i ? 'sel' : ''}" data-act="luTap" data-team="${t.id}" data-i="${i}">
           <div class="lu-ord">${i + 1}번</div>
@@ -220,6 +225,8 @@ const Screens = {
           ${t.logo ? `<button class="btn small ghost-dark" data-act="logoDel" data-team="${t.id}">로고 지우기</button>` : ''}
           <label class="fld">팀 이름<input class="in" value="${esc(t.name)}" maxlength="16" data-tf="name"></label>
           <label class="fld">짧은 이름 (전광판)<input class="in" value="${esc(t.short)}" maxlength="4" data-tf="short"></label>
+          <label class="fld">감독 이름 · 번호
+            <div class="row"><input class="in" value="${esc(t.manager.name)}" maxlength="12" data-tf="managerName"><input class="in num" type="number" inputmode="numeric" min="0" max="99" value="${t.manager.num}" data-tf="managerNum"></div></label>
           <label class="fld">중계에서 부르는 이름
             <div class="row"><input class="in" value="${esc(t.call)}" maxlength="16" data-tf="call"><button class="btn small" data-act="sayTeam" data-team="${t.id}">🔊</button></div></label>
           <div class="row colors">
@@ -499,7 +506,8 @@ const Game = {
         ${Art.logo(DB.team(T.id) || T, 'xs')}<span>${esc(T.short)} 라인업</span><em>${batting ? '공격' : '수비'}🔄</em>
       </button>
       <ol class="lp-list">${rows}</ol>
-      <div class="lp-pit">⚾ 투수 <b>${esc(T.pitcher.name)}</b> #${T.pitcher.num}</div>`;
+      <div class="lp-pit">⚾ 투수 <b>${esc(T.pitcher.name)}</b> #${T.pitcher.num}</div>
+      ${mgrHTML(T.manager && T.manager.name ? T : DB.team(T.id), 'lp-mgr')}`;
   },
 
   renderFielders() { $('#f-fielders').innerHTML = Field.fielders(this.G.teams[Engine.fld(this.G)]); },
@@ -1033,6 +1041,12 @@ function onField(el) {
     return;
   }
   const t = DB.team($('.edit') && $('.edit').dataset.team); if (!t) return;
+  if (el.dataset.tf === 'managerName' || el.dataset.tf === 'managerNum') {   // 감독은 비워도 돼요
+    if (el.dataset.tf === 'managerName') t.manager.name = el.value.trim();
+    else t.manager.num = el.value.trim() === '' ? '' : numOr(el.value, t.manager.num);
+    DB.saveTeams();
+    return;
+  }
   if (el.dataset.tf) {
     const k = el.dataset.tf, v = el.value.trim();
     if (!v) { render(); return; }
